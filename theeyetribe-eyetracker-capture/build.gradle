@@ -1,0 +1,55 @@
+apply plugin: 'java'
+
+sourceCompatibility = '1.8'
+
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+version = '0.0.0'
+
+repositories {
+    mavenCentral()
+    
+    //allow local dependencies (dockframes)
+    flatDir {
+        dirs 'libs'
+        dirs '../libs'
+    }
+}
+
+dependencies {
+    
+    compile project(':mo')
+
+    compile 'com.theeyetribe:eyetribe-java:0.9.60'
+    compile name: "docking-frames-core"
+    compile name: "docking-frames-common"
+    compile name: 'i18n-1.1.2-SNAPSHOT' 
+    
+    // https://mvnrepository.com/artifact/org.apache.commons/commons-lang3
+    compile group: 'org.apache.commons', name: 'commons-lang3', version: '3.5'
+
+}
+
+jar {
+    manifest {
+        attributes( 'Implementation-Title'   : 'Gradle',
+                    'Implementation-Version' :  version,
+        )
+    }
+    
+/*    from (configurations.compile.collect 
+        { it.isDirectory() ? it : zipTree(it) }){
+        // remove all signature files
+        exclude "META-INF/*.SF"
+        exclude "META-INF/*.DSA"
+        exclude "META-INF/*.RSA"
+    }
+    
+*/    doLast{
+        project.file('build/libs/plugins').mkdirs()
+        copy{
+            from 'src/main/resources'
+            into 'build/libs'
+        }
+    }
+}

@@ -38,13 +38,21 @@ public class FixationPanel extends JPanel {
         setDoubleBuffered(true);
     }
     
-    
-            
-    public static void main(String[] args) {
-        
+    public void reset() {
+        prevWasFixated = false;
+        first = last = null;
+        globalFixationsCount = 0;
+        fixationsCount = 0;
     }
     
     public void addGazeData(GazeData data) {
+        
+        if (first!= null && data.timeStamp == first.firstTime) {
+            prevWasFixated = false;
+            first = last = null;
+            globalFixationsCount = 0;
+            fixationsCount = 0;
+        }
     
         if (data.isFixated && prevWasFixated) {
             

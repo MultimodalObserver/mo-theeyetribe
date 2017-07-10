@@ -76,28 +76,36 @@ public class EyeTribeFixPlayer implements Playable {
         String[] parts = line.split(" ");
         GazeData data = new GazeData();
         for (String part : parts) {
+            
+            try {
 
-            String[] keyNValue = part.split(":");
-            String k = keyNValue[0];
-            String v = keyNValue[1];
+                String[] keyNValue = part.split(":");
+                String k = keyNValue[0];
+                String v = keyNValue[1];
 
-            switch (k) {
-                case "t":
-                    data.timeStamp = Long.parseLong(v);
-                    break;
-                case "fx":
-                    data.isFixated = Boolean.parseBoolean(v);
-                    break;
-                case "sm":
-                    data.smoothedCoordinates.x = Double.parseDouble(v.split(";")[0]);
-                    data.smoothedCoordinates.y = Double.parseDouble(v.split(";")[1]);
-                    break;
-                case "rw":
-                    data.rawCoordinates.x = Double.parseDouble(v.split(";")[0]);
-                    data.rawCoordinates.y = Double.parseDouble(v.split(";")[1]);
-                    break;
-                default:
-                    break;
+                switch (k) {
+                    case "t":
+                        data.timeStamp = Long.parseLong(v);
+                        break;
+                    case "fx":
+                        data.isFixated = Boolean.parseBoolean(v);
+                        break;
+                    case "sm":
+                        data.smoothedCoordinates.x = Double.parseDouble(v.split(";")[0]);
+                        data.smoothedCoordinates.y = Double.parseDouble(v.split(";")[1]);
+                        break;
+                    case "rw":
+                        data.rawCoordinates.x = Double.parseDouble(v.split(";")[0]);
+                        data.rawCoordinates.y = Double.parseDouble(v.split(";")[1]);
+                        break;
+                    default:
+                        break;
+                }
+            } catch (Exception e) {
+                logger.log(
+                        Level.WARNING,
+                        "Error reading part <{0}> line <{1}>:{2}",
+                        new Object[]{part, line, e});
             }
         }
 
@@ -113,8 +121,14 @@ public class EyeTribeFixPlayer implements Playable {
         if (requestedMillis < start
                 || requestedMillis > end
                 || requestedMillis == current.timeStamp
-                || (requestedMillis > current.timeStamp
-                && requestedMillis < next.timeStamp)) {
+                ||
+                (requestedMillis > current.timeStamp && requestedMillis < next.timeStamp)) {
+            return;
+        }
+        
+        if (requestedMillis == next.timeStamp) {
+            current = next;
+            next = getNext();
             return;
         }
 
@@ -135,7 +149,7 @@ public class EyeTribeFixPlayer implements Playable {
             marker = file.getFilePointer();
 
             GazeData nextLocal = getNext();
-            if (next == null) {
+            if (nextLocal == null) {
                 return;
             }
 
@@ -153,7 +167,7 @@ public class EyeTribeFixPlayer implements Playable {
             file.seek(marker);
             current = data;
             next = nextLocal;
-
+            //panel.reset();
         } catch (IOException ex) {
             logger.log(Level.SEVERE, null, ex);
         }
@@ -180,12 +194,12 @@ public class EyeTribeFixPlayer implements Playable {
     private GazeData getNext() {
         GazeData d = null;
         try {
-            do {
+            //do {
                 String line = file.readLine();
                 if (line != null) {
                     d = parseDataFromLine(line);
                 }
-            } while (d == null);
+            //} while (d == null);
         } catch (IOException ex) {
             logger.log(Level.SEVERE, null, ex);
         }

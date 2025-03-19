@@ -22,6 +22,11 @@ public class FixationConfig implements VisualizableConfiguration {
     public FixationConfig() {
         files = new ArrayList<>();
     }
+    
+     public FixationConfig(String id) {
+        this();
+        this.id = id;
+    }
 
     @Override
     public List<String> getCompatibleCreators() {

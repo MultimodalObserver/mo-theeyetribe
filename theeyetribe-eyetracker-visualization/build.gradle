@@ -4,7 +4,7 @@ sourceCompatibility = '1.8'
 
 [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
 
-version = '0.0.0'
+version = '1.0.0'
 
 repositories {
     mavenCentral()
@@ -16,26 +16,30 @@ repositories {
     }
     
     maven {
-        url  "http://dl.bintray.com/eyetribe/maven"
-        url "http://jcenter.bintray.com"
+        url  "https://dl.bintray.com/eyetribe/maven"
+        url "https://jcenter.bintray.com"
     }
 }
 
 dependencies {
     
     //compile project(':mo')
-    compile name: "multimodal-observer", version: '0.0.0'
+    implementation name: "multimodal-observer", version: '0.0.0'
+    implementation 'commons-io:commons-io:2.11.0'
+    implementation 'bibliothek:docking-frames-core'
+    implementation 'bibliothek:docking-frames-common'
 
-    compile 'com.theeyetribe:eyetribe-java:0.9.60'
-//    compile name: "docking-frames-core"
-//    compile name: "docking-frames-common"
-   // compile name: 'i18n-1.1.2-SNAPSHOT' 
+    implementation 'com.theeyetribe:eyetribe-java:0.9.60'
+    //compile name: "docking-frames-core"
+    //compile name: "docking-frames-common"
+    //compile name: 'i18n-1.1.2-SNAPSHOT' 
 }
 
 jar {
     manifest {
         attributes( 'Implementation-Title'   : 'Gradle',
                     'Implementation-Version' :  version,
+                    'Main-Class': 'mo.eyetracker.visualization.EyeTribeFixPlugin'
         )
     }
     

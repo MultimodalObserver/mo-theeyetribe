@@ -2,282 +2,247 @@ package mo.eyetracker.visualization;
 
 import com.theeyetribe.clientsdk.data.GazeData;
 import com.theeyetribe.clientsdk.data.Point2D;
-import java.awt.*;
-import java.awt.geom.Ellipse2D;
-import java.awt.image.BufferedImage;
-import javax.swing.JPanel;
-import mo.visualization.test.Gradient;
+import javafx.geometry.VPos;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.layout.AnchorPane;
+import javafx.scene.paint.Color;
+import javafx.scene.text.TextAlignment;
 
-public class FixationPanel extends JPanel {
+public class FixationPanel extends AnchorPane {
 
-    int fixationsLimit = 50;
-    
-    int diameterMaxLimit = 120;
-    int diameterMinLimit = 40;
-    
-    boolean prevWasFixated = false;
-    
-    Fixation first;
-    Fixation last;
-    
-    int globalFixationsCount = 0;
-    int fixationsCount;
-    
-    BufferedImage image;
-    int imageWidth, imageHeight;
-    
-    Color[] colors;
-    int[] dataColorIndices;
-    
-    int[] sizes;
+    private final Canvas canvas;
+    private final GraphicsContext gc;
+
+    private int fixationsLimit = 50;
+    private int diameterMaxLimit = 120;
+    private int diameterMinLimit = 40;
+
+    private boolean prevWasFixated = false;
+
+    private Fixation first;
+    private Fixation last;
+
+    private int globalFixationsCount = 0;
+    private int fixationsCount;
+
+    private Color[] colors;
+    private int[] dataColorIndices;
+    private int[] sizes;
+
+    private double originalWidth;
+    private double originalHeight;
 
     public FixationPanel(int width, int height) {
-        imageWidth = width;
-        imageHeight = height;
-        colors = Gradient.GRADIENT_GREEN_YELLOW_ORANGE_RED;
-        setDoubleBuffered(true);
+        this.originalWidth = width;
+        this.originalHeight = height;
+
+        canvas = new Canvas(width, height);
+        gc = canvas.getGraphicsContext2D();
+
+        this.getChildren().add(canvas);
+        AnchorPane.setTopAnchor(canvas, 0.0);
+        AnchorPane.setLeftAnchor(canvas, 0.0);
+        AnchorPane.setRightAnchor(canvas, 0.0);
+        AnchorPane.setBottomAnchor(canvas, 0.0);
+
+        canvas.widthProperty().bind(this.widthProperty());
+        canvas.heightProperty().bind(this.heightProperty());
+
+        canvas.widthProperty().addListener((obs, oldVal, newVal) -> redraw());
+        canvas.heightProperty().addListener((obs, oldVal, newVal) -> redraw());
+
+        colors = new Color[]{
+            Color.GREEN, Color.YELLOW, Color.ORANGE, Color.RED
+        };
+
+        reset();
     }
-    
+
     public void reset() {
         prevWasFixated = false;
         first = last = null;
         globalFixationsCount = 0;
         fixationsCount = 0;
-    }
-    
-    public void addGazeData(GazeData data) {
-        
-        if (first!= null && data.timeStamp == first.firstTime) {
-            prevWasFixated = false;
-            first = last = null;
-            globalFixationsCount = 0;
-            fixationsCount = 0;
-        }
-    
-        if (data.isFixated && prevWasFixated) {
-            
-            accumulateFixation(data);
-            prevWasFixated = true;
-            
-        } else if (data.isFixated && !prevWasFixated) {
-            
-            addNewFixation(data);
-            prevWasFixated = true;
-            
-        } else {
 
-            prevWasFixated = false;
-            
+        clearCanvas();
+    }
+
+    private void clearCanvas() {
+        gc.setFill(Color.WHITE);
+        gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+    }
+
+    public void addGazeData(GazeData data) {
+        if (first != null && data.timeStamp == first.firstTime) {
+            reset();
         }
-        
+
+        if (data.isFixated && prevWasFixated) {
+            accumulateFixation(data);
+        } else if (data.isFixated && !prevWasFixated) {
+            addNewFixation(data);
+        }
+
+        prevWasFixated = data.isFixated;
     }
 
     private void addNewFixation(GazeData data) {
-        
         Fixation f = new Fixation();
         f.addPoint(data);
-        f.addTime(data.timeStamp);        
-        
+        f.addTime(data.timeStamp);
+
         if (last == null) {
-            
             first = f;
-            
         } else {
-            
             last.next = f;
             f.prev = last;
         }
-        
+
         last = f;
-        
+
         fixationsCount++;
         globalFixationsCount++;
         f.number = globalFixationsCount;
-        
+
         if (fixationsCount > fixationsLimit) {
-            Fixation second = first.next;
-            first = second;
-            second.prev = null;
+            first = first.next;
+            first.prev = null;
             fixationsCount--;
         }
-        
+
         updateColorsAndSizes();
-        drawData();
-        repaint();
+        redraw();
     }
 
     private void accumulateFixation(GazeData data) {
-        last.addTime(data.timeStamp);
-        last.addPoint(data);
-        
+        if (last != null) {
+            last.addTime(data.timeStamp);
+            last.addPoint(data);
+        }
+
         updateColorsAndSizes();
-        drawData();
-        repaint();
+        redraw();
     }
-    
-    void updateColorsAndSizes() {
+
+    private void updateColorsAndSizes() {
         dataColorIndices = new int[fixationsLimit];
         sizes = new int[fixationsLimit];
         long minTime = 0, maxTime = 0;
-        
+
         for (Fixation fix = first; fix != null; fix = fix.next) {
-            if (fix.ellapsedTime > maxTime) {
-                maxTime = fix.ellapsedTime;
-            }
+            maxTime = Math.max(maxTime, fix.ellapsedTime);
         }
-        
+
         double timeRange = maxTime - minTime;
-        
+
         int count = 0;
         for (Fixation fix = first; fix != null; fix = fix.next) {
-            
-            double norm = (fix.ellapsedTime - minTime) / timeRange; // 0 < norm < 1
+            double norm = (fix.ellapsedTime - minTime) / timeRange;
             int index = (int) Math.floor(norm * (colors.length - 1));
             dataColorIndices[count] = index;
-            
+
             int size = (int) (fix.ellapsedTime * (diameterMaxLimit - diameterMinLimit)
                     / timeRange) + diameterMinLimit;
-            
             sizes[count] = size;
-            
+
             count++;
         }
     }
-    
-    private void drawData() {
-        if (image == null) {
-            image = new BufferedImage(
-                    imageWidth, imageHeight, BufferedImage.TYPE_INT_ARGB);
+
+    private void redraw() {
+        clearCanvas();
+
+        double widthScale = canvas.getWidth() / originalWidth;
+        double heightScale = canvas.getHeight() / originalHeight;
+
+        gc.setStroke(Color.BLUE);
+        gc.setLineWidth(3);
+
+        Fixation current = first;
+        while (current != null && current.next != null) {
+            Point2D start = current.getCenter();
+            Point2D end = current.next.getCenter();
+
+            gc.strokeLine(
+                    start.x * widthScale,
+                    start.y * heightScale,
+                    end.x * widthScale,
+                    end.y * heightScale
+            );
+            current = current.next;
         }
-        
-        Graphics2D g = image.createGraphics();
-        
-        if (first != null){
-        
-            g.setColor(Color.white);
-            g.fillRect(0, 0, imageWidth, imageHeight);
-            
-            int count = 0;
-            for (Fixation fix = first; fix != null; fix = fix.next, count++) {
-                if (fix.next != null) {
-                    Point2D p = fix.getCenter();
-                    Point2D pNext = fix.next.getCenter();
-                
-                    g.setColor(Color.blue);
-                    g.setStroke(new BasicStroke(3));
-                    g.drawLine((int) p.x, (int) p.y, (int) pNext.x, (int) pNext.y);
-                }
-            }
-            
-            count = 0;
-            for (Fixation fix = first; fix != null; fix = fix.next, count++) {
-                Point2D p = fix.getCenter();
-                g.setColor(colors[dataColorIndices[count]]);
-                g.fillOval((int) p.x - (sizes[count] / 2), (int) p.y - (sizes[count] / 2), sizes[count], sizes[count]);
-                Font font = new Font("Arial", Font.BOLD, 16);
-                
-                g.setFont(font); 
-                g.setColor(Color.black);
-                
-                FontMetrics fm = g.getFontMetrics();
-                
-                //g.
-                g.drawString(fix.number + "", (int)p.x, (int)p.y);
-            }
+
+        current = first;
+        int count = 0;
+        while (current != null) {
+            Point2D center = current.getCenter();
+            gc.setFill(colors[dataColorIndices[count]]);
+            int size = sizes[count];
+
+            double scaledX = center.x * widthScale;
+            double scaledY = center.y * heightScale;
+            double scaledW = size * widthScale;
+            double scaledH = size * heightScale;
+
+            gc.fillOval(
+                    scaledX - scaledW / 2,
+                    scaledY - scaledH / 2,
+                    scaledW,
+                    scaledH
+            );
+
+            gc.setTextAlign(TextAlignment.CENTER);
+            gc.setTextBaseline(VPos.CENTER);
+
+            gc.setFill(Color.BLACK);
+            gc.fillText(String.valueOf(current.number),
+                    scaledX,
+                    scaledY
+            );
+
+            count++;
+            current = current.next;
         }
     }
 
-    @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
-        
-        Graphics2D g2d = (Graphics2D) g;
-
-        int width = this.getWidth();
-        int height = this.getHeight();
-
-        this.setOpaque(true);
-
-        // clear the panel
-        g2d.setColor(Color.white);
-        g2d.fillRect(0, 0, width, height);
-
-        // draw the heat map
-        if (image == null) {
-            // Ideally, we only call drawData in the constructor, or if we
-            // change the data or gradients. We include this just to be safe.
-            drawData();
-        }
-
-        // The data plot itself is drawn with 1 pixel per data point, and the
-        // drawImage method scales that up to fit our current window size. This
-        // is very fast, and is much faster than the previous version, which 
-        // redrew the data plot each time we had to repaint the screen.
-        g2d.drawImage(image,
-                1, 1,
-                width ,
-                height ,
-                0, 0,
-                image.getWidth(), image.getHeight(),
-                null);
-
-    }
-
-    private class Fixation {
-        Ellipse2D circle;
-        int number;
-        
-        long ellapsedTime;
-        long firstTime;
-        long lastTime;
-        private boolean timeSeted = false;
+    private static class Fixation {
 
         private Point2D sum;
         private int pointsCount;
-    
-        Fixation prev;
-        Fixation next;
-        
-        void addPoint(GazeData data) {
-            
-            Point2D newPoint;
-            
-            if (data.hasSmoothedGazeCoordinates()) {
-                newPoint = data.smoothedCoordinates;
-            } else if (data.hasRawGazeCoordinates()) {
-                newPoint = data.rawCoordinates;
-            } else {
-                newPoint = new Point2D(0, 0);
-            }
-            
+        private long ellapsedTime;
+        private long firstTime;
+        private long lastTime;
+        private boolean timeSet = false;
+        private Fixation prev;
+        private Fixation next;
+        private int number;
+
+        public void addPoint(GazeData data) {
+            Point2D point = data.hasSmoothedGazeCoordinates()
+                    ? data.smoothedCoordinates
+                    : (data.hasRawGazeCoordinates() ? data.rawCoordinates : new Point2D(0, 0));
+
             if (sum == null) {
-                sum = newPoint;
+                sum = point;
             } else {
-                sum = sum.add(newPoint);
+                sum = sum.add(point);
             }
-            
+
             pointsCount++;
         }
-        
-        void addTime(long time) {
-            if (!timeSeted) {
-                firstTime = lastTime = time;
-                timeSeted = true;
-            } else {
-                lastTime = time;
-                ellapsedTime = lastTime - firstTime;
+
+        public void addTime(long time) {
+            if (!timeSet) {
+                firstTime = time;
+                timeSet = true;
             }
+            lastTime = time;
+            ellapsedTime = lastTime - firstTime;
         }
-        
-        Point2D getCenter() {
+
+        public Point2D getCenter() {
             return sum.divide(pointsCount);
         }
-        
-        @Override
-        public String toString() {
-            return 
-                    number + " " + ellapsedTime + " " + getCenter();
-        }
     }
-
 }

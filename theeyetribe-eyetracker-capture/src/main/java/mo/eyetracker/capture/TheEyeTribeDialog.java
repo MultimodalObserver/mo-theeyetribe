@@ -1,131 +1,114 @@
 package mo.eyetracker.capture;
 
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.GridBagLayout;
-import java.awt.Insets;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
-import javax.swing.JButton;
-import javax.swing.JDialog;
-import javax.swing.JLabel;
-import javax.swing.JTextField;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import mo.core.ui.GridBConstraints;
-import mo.core.ui.Utils;
+import java.util.ResourceBundle;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextField;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.paint.Color;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
 import mo.organization.ProjectOrganization;
 
-public class TheEyeTribeDialog extends JDialog implements DocumentListener {
+public class TheEyeTribeDialog extends Stage {
 
-    JLabel errorLabel;
-    JTextField nameField;
-    JButton accept;
+    private final Label errorLabel;
+    private final TextField nameField;
+    private final Button accept;
+    private final Button cancel;
 
-    ProjectOrganization org;
-
-    boolean accepted = false;
-
-    public TheEyeTribeDialog() {
-        super(null, "The Eye Tribe Capture Configuration", ModalityType.APPLICATION_MODAL);
-    }
+    private final ProjectOrganization org;
+    private boolean accepted = false;
+    
+    /*
+    //test to try different lenguages on the tab
+    Locale idiom = new Locale("en", "EN");
+    ResourceBundle dialogBundle = ResourceBundle.getBundle("properties/principal", idiom);
+    */
+    
+    ResourceBundle dialogBundle = ResourceBundle.getBundle("properties/principal");
 
     public TheEyeTribeDialog(ProjectOrganization organization) {
-        super(null, "The Eye Tribe Capture Configuration", ModalityType.APPLICATION_MODAL);
-        org = organization;
+        this.org = organization;
 
+        setTitle(dialogBundle.getString("title"));
+        initModality(Modality.APPLICATION_MODAL);
+
+        GridPane grid = new GridPane();
+        grid.setPadding(new Insets(15, 15, 10, 15));
+        grid.setVgap(10);
+        grid.setHgap(10);
+        grid.setStyle("-fx-background-color: #d6cfcf;");
+        grid.setAlignment(Pos.CENTER);
+
+        Label label = new Label(dialogBundle.getString("configuration_n"));
+
+        nameField = new TextField();
+        nameField.setMaxWidth(200);
+        nameField.textProperty().addListener((observable, oldValue, newValue) -> updateState());
+
+        errorLabel = new Label();
+        errorLabel.setTextFill(Color.RED);
+
+        accept = new Button(dialogBundle.getString("accept"));
+        accept.setStyle("-fx-background-color: #b4eda6; -fx-text-fill: black;");
+        accept.setDisable(true);
+        accept.setOnAction(e -> {
+            accepted = true;
+            close();
+        });
+        accept.setMaxWidth(100);
+
+        cancel = new Button(dialogBundle.getString("cancel"));
+        cancel.setStyle("-fx-background-color: #ea908a; -fx-text-fill: black;");
+        cancel.setOnAction(e -> {
+            accepted = false;
+            close();
+        });
+        cancel.setMaxWidth(100);
+
+        HBox acceptBox = new HBox(accept);
+        acceptBox.setAlignment(Pos.CENTER_LEFT); 
+
+        HBox cancelBox = new HBox(cancel);
+        cancelBox.setAlignment(Pos.CENTER_RIGHT);
+        
+        grid.add(label, 0, 0);
+        grid.add(nameField, 1, 0);
+        grid.add(errorLabel, 0, 1, 2, 1);  
+        grid.add(acceptBox, 0, 2); 
+        grid.add(cancelBox, 1, 2); 
+
+        Scene scene = new Scene(grid, 350, 160);
+        setScene(scene);
     }
 
     public boolean showDialog() {
-
-        setLayout(new GridBagLayout());
-
-        addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosing(WindowEvent e) {
-                accepted = false;
-                super.windowClosing(e);
-            }
-        });
-
-        setLayout(new GridBagLayout());
-        GridBConstraints gbc = new GridBConstraints();
-
-        JLabel label = new JLabel("Configuration name: ");
-        nameField = new JTextField();
-        nameField.getDocument().addDocumentListener(this);
-
-        gbc.gx(0).gy(0).f(GridBConstraints.HORIZONTAL)
-                .a(GridBConstraints.FIRST_LINE_START)
-                .i(new Insets(5, 5, 5, 5));
-
-        add(label, gbc);
-        //add(path, gbc.gx(1));
-        add(nameField, gbc.gx(2).wx(1));
-
-        errorLabel = new JLabel("");
-        errorLabel.setForeground(Color.red);
-        add(errorLabel, gbc.gx(0).gy(2).gw(3).a(GridBConstraints.LAST_LINE_START).wy(1));
-
-        accept = new JButton("Accept");
-        accept.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                accepted = true;
-                setVisible(false);
-                dispose();
-            }
-        });
-
-        gbc.gx(0).gy(3).a(GridBConstraints.LAST_LINE_END).gw(3).wy(1).f(GridBConstraints.NONE);
-        add(accept, gbc);
-
-        setMinimumSize(new Dimension(400, 150));
-        setPreferredSize(new Dimension(400, 300));
-        pack();
-        Utils.centerOnScreen(this);
-        updateState();
-        setVisible(true);
-
+        showAndWait();
         return accepted;
-    }
-
-    public static void main(String[] args) {
-        ProjectOrganization o = new ProjectOrganization("C:\\Users\\Celso\\Desktop\\example");
-        TheEyeTribeDialog c = new TheEyeTribeDialog(o);
-        
-        boolean i = c.showDialog();
-        System.exit(0);
-    }
-
-    @Override
-    public void insertUpdate(DocumentEvent e) {
-        updateState();
-    }
-
-    @Override
-    public void removeUpdate(DocumentEvent e) {
-        updateState();
-    }
-
-    @Override
-    public void changedUpdate(DocumentEvent e) {
-        updateState();
     }
 
     private void updateState() {
         if (nameField.getText().isEmpty()) {
-            errorLabel.setText("A name for this configuration must be specified");
-            accept.setEnabled(false);
+            errorLabel.setText(dialogBundle.getString("name"));
+            accept.setDisable(true);
         } else {
             errorLabel.setText("");
-            accept.setEnabled(true);
+            accept.setDisable(false);
         }
     }
 
     public String getConfigurationName() {
         return nameField.getText();
     }
+
+    public static void main(String[] args) {
+    }
 }
+
+
+

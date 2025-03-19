@@ -1,22 +1,23 @@
 package mo.eyetracker.visualization;
 
+
 import com.theeyetribe.clientsdk.data.GazeData;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.charset.Charset;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import javax.swing.SwingUtilities;
-import mo.core.ui.dockables.DockableElement;
-import mo.core.ui.dockables.DockablesRegistry;
+import javafx.application.Platform;
+import javafx.scene.Node;
 import mo.visualization.Playable;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.charset.Charset;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 public class EyeTribeFixPlayer implements Playable {
 
-    private long start;
+    private long start, currentTime;
     private long end = -1;
     private boolean stopped = false;
 
@@ -24,51 +25,61 @@ public class EyeTribeFixPlayer implements Playable {
     private GazeData next;
 
     private RandomAccessFile file;
-    private FixationPanel panel;
+    
+    private GazeData currentEvent, nextEvent;
+    private FixationPanel pane;
+    private AtomicBoolean isPlaying = new AtomicBoolean(false);
+    private AtomicBoolean isStopped = new AtomicBoolean(false);
+    private AtomicBoolean isPaused = new AtomicBoolean(false);
 
     private static final Logger logger = Logger.getLogger(EyeTribeFixPlayer.class.getName());
 
     public EyeTribeFixPlayer(File file) {
         try {
-            readLastTime(file);
-
             this.file = new RandomAccessFile(file, "r");
-            current = getNext();
-            if (current != null) {
-                start = current.timeStamp;
-                next = getNext();
+            readLastTime(file);
+            currentEvent = readNextEventFromFile();
+            if (currentEvent != null) {
+                start = currentEvent.timeStamp;
+                nextEvent = readNextEventFromFile();
             }
 
-            panel = new FixationPanel(1920, 1080);
-            SwingUtilities.invokeLater(() -> {
-                try {
-                    DockableElement d = new DockableElement();
-                    d.add(panel);
-                    DockablesRegistry.getInstance().addDockableInProjectGroup("", d);
-                } catch (Exception ex) {
-                    logger.log(Level.SEVERE, null, ex);
-                }
-            });
+            pane = new FixationPanel(1920, 1080);
 
-        } catch (FileNotFoundException ex) {
-            logger.log(Level.SEVERE, null, ex);
+            /*Platform.runLater(() -> {
+                Stage stage = new Stage();
+                stage.setTitle("EyeTribe Fixation Visualization");
+                stage.setScene(new Scene(pane, 800, 600));
+                stage.show();
+
+                if (currentEvent != null) {
+                    pane.addGazeData(currentEvent);
+                }
+            });*/
+
+        } catch (IOException ex) {
+            logger.log(Level.SEVERE, "Error initializing EyeTribeFixPlayer", ex);
         }
     }
+    
+    public Node getPaneNode() {
+        return pane;
+    }
 
-    private void readLastTime(File f) {
+    private void readLastTime(File f) throws IOException {
         try (ReversedLinesFileReader rev = new ReversedLinesFileReader(f, Charset.defaultCharset())) {
-            String lastLine = null;
+            String lastLine;
             do {
                 lastLine = rev.readLine();
                 if (lastLine == null) {
                     return;
                 }
             } while (lastLine.trim().isEmpty());
-            GazeData e = parseDataFromLine(lastLine);
-            end = e.timeStamp;
-            rev.close();
-        } catch (IOException ex) {
-            logger.log(Level.SEVERE, null, ex);
+
+            GazeData lastEvent = parseEventFromLine(lastLine);
+            if (lastEvent != null) {
+                end = lastEvent.timeStamp;
+            }
         }
     }
 
@@ -76,9 +87,8 @@ public class EyeTribeFixPlayer implements Playable {
         String[] parts = line.split(" ");
         GazeData data = new GazeData();
         for (String part : parts) {
-            
-            try {
 
+            try {
                 String[] keyNValue = part.split(":");
                 String k = keyNValue[0];
                 String v = keyNValue[1];
@@ -111,10 +121,50 @@ public class EyeTribeFixPlayer implements Playable {
 
         return data;
     }
+    
+    private GazeData parseEventFromLine(String line) {
+        try {
+            String[] parts = line.split(" ");
+            GazeData data = new GazeData();
+            for (String part : parts) {
+                String[] keyValue = part.split(":");
+                if (keyValue.length != 2) {
+                    continue;
+                }
 
-    @Override
-    public void pause() {
+                switch (keyValue[0]) {
+                    case "t":
+                        data.timeStamp = Long.parseLong(keyValue[1]);
+                        break;
+                    case "sm":
+                        String[] coords = keyValue[1].split(";");
+                        data.smoothedCoordinates.x = Double.parseDouble(coords[0]);
+                        data.smoothedCoordinates.y = Double.parseDouble(coords[1]);
+                        break;
+                    case "fx":
+                        data.isFixated = Boolean.parseBoolean(keyValue[1]);
+                        break;
+                }
+            }
+            return data;
+        } catch (Exception ex) {
+            logger.log(Level.WARNING, "Error parsing event from line: " + line, ex);
+            return null;
+        }
     }
+    
+    private GazeData readNextEventFromFile() {
+        try {
+            String line = file.readLine();
+            if (line != null) {
+                return parseEventFromLine(line);
+            }
+        } catch (IOException ex) {
+            logger.log(Level.SEVERE, "Error reading next event from file", ex);
+        }
+        return null;
+    }
+
 
     @Override
     public void seek(long requestedMillis) {
@@ -125,7 +175,7 @@ public class EyeTribeFixPlayer implements Playable {
                 (requestedMillis > current.timeStamp && requestedMillis < next.timeStamp)) {
             return;
         }
-        
+
         if (requestedMillis == next.timeStamp) {
             current = next;
             next = getNext();
@@ -159,7 +209,7 @@ public class EyeTribeFixPlayer implements Playable {
                 marker = file.getFilePointer();
                 nextLocal = getNext();
 
-                if (nextLocal == null) { // no more events (end of file)
+                if (nextLocal == null) { 
                     return;
                 }
             }
@@ -167,7 +217,6 @@ public class EyeTribeFixPlayer implements Playable {
             file.seek(marker);
             current = data;
             next = nextLocal;
-            //panel.reset();
         } catch (IOException ex) {
             logger.log(Level.SEVERE, null, ex);
         }
@@ -175,31 +224,61 @@ public class EyeTribeFixPlayer implements Playable {
 
     @Override
     public void play(long millis) {
-        if ((millis >= start) && (millis <= end)) {
-            seek(millis);
-            if (current.timeStamp == millis) {
-                double x = current.smoothedCoordinates.x;
-                double y = current.smoothedCoordinates.y;
-
-                if (current.state != GazeData.STATE_TRACKING_FAIL
-                        && current.state != GazeData.STATE_TRACKING_LOST
-                        && !(x == 0 && y == 0)) {
-
-                    panel.addGazeData(current);
-                }
+        if (isPlaying.get()) {
+            if (isPaused.get()) {
+                isPaused.set(false);
             }
+            return;
         }
+
+        if (isStopped.get()) {
+            resetPlayback();
+            isStopped.set(false);
+        }
+
+        isPlaying.set(true);
+        isPaused.set(false);
+
+        new Thread(() -> {
+            try {
+                while (!isStopped.get()
+                        && currentEvent != null
+                        && currentTime <= end) {
+                    while (isPaused.get() && !isStopped.get()) {
+                        Thread.sleep(100); 
+                    }
+                    if (isStopped.get()) {
+                        break;
+                    }
+
+                    Platform.runLater(() -> pane.addGazeData(currentEvent));
+
+                    currentEvent = nextEvent;
+                    nextEvent = readNextEventFromFile();
+                    if (nextEvent == null) {
+                        break;
+                    }
+
+                    long delay = Math.max(0, nextEvent.timeStamp - currentEvent.timeStamp);
+                    Thread.sleep(delay);
+
+                    currentTime = nextEvent.timeStamp;
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                isPlaying.set(false);
+            }
+        }).start();
     }
 
     private GazeData getNext() {
         GazeData d = null;
         try {
-            //do {
-                String line = file.readLine();
-                if (line != null) {
-                    d = parseDataFromLine(line);
-                }
-            //} while (d == null);
+            String line = file.readLine();
+            if (line != null) {
+                d = parseDataFromLine(line);
+            }
         } catch (IOException ex) {
             logger.log(Level.SEVERE, null, ex);
         }
@@ -217,8 +296,58 @@ public class EyeTribeFixPlayer implements Playable {
     }
 
     @Override
-    public void stop() {
-        stopped = true;
-        pause();
+    public void pause() {
+        if (isPlaying.get()) {
+            isPaused.set(true);
+        }
     }
+
+    @Override
+    public void stop() {
+        isStopped.set(true);
+        isPlaying.set(false);
+        isPaused.set(false);
+    }
+
+    private void resetPlayback() {
+        try {
+            file.seek(0);
+            currentTime = 0;
+            currentEvent = readNextEventFromFile();
+            nextEvent = readNextEventFromFile();
+
+            pane.reset();
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "Error resetting file pointer", e);
+        }
+    }
+   
+
+    public void sync(boolean bln) {
+        boolean isSync = bln;
+    }
+    
+    
+    /*
+    
+    // Original play method, works with the Gameloop in the original version of MO.
+    
+    @Override
+    public void play(long millis) {
+        if ((millis >= start) && (millis <= end)) {
+            seek(millis);
+            if (current.timeStamp == millis) {
+                double x = current.smoothedCoordinates.x;
+                double y = current.smoothedCoordinates.y;
+
+                if (current.state != GazeData.STATE_TRACKING_FAIL
+                        && current.state != GazeData.STATE_TRACKING_LOST
+                        && !(x == 0 && y == 0)) {
+
+                    panel.addGazeData(current);
+                }
+            }
+        }
+    }
+    */
 }
